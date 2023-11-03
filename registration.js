@@ -15,10 +15,14 @@ async function onRegister(ev) {
         alert("Fill all fields");
     } else {
         
-        let response = await fetch('/register', {
-            method: 'post', 
-            body: formData
-        });
+        await fetch('/register', {
+            method: 'POST', 
+            headers: {
+                'Content-Type': 'application/json'
+            }, 
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json());
     }
     
 }

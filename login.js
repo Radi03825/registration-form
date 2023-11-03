@@ -14,9 +14,12 @@ async function onLogin(ev) {
         alert("Fill all fields");
     } else {
         
-        let response = await fetch('/login', {
-            method: 'post', 
-            body: formData
+        await fetch('/login', {
+            method: 'POST', 
+            headers: {
+                'Content-Type': 'application/json'
+            }, 
+            body: JSON.stringify(formData)
         });
     }
     

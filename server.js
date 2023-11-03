@@ -1,33 +1,12 @@
-const express = require('express');
-const bodyParser = require('body-parser');
+const http = require('http');
+const url = require('url');
+const fs = require('fs');
 const mysql = require('mysql2');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
-const app = express();
 const port = 3003;
 
-
-
 const salt = 7;
-
-app.listen(port, function(err) {
-  if (err) {
-    console.log(err);
-  } else {
-    console.log('Port: ' + port);
-  }
-});
-
-app.use(bodyParser.urlencoded({ extended: true }));
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
-});
-
-app.get('/login', (req, res) => {
-  res.sendFile(__dirname + '/login.html')
-});
-
-app.use(bodyParser.json());
 
 const dbConfig = mysql.createConnection({
   host: 'localhost',
@@ -65,77 +44,140 @@ function getUserId(email) {
   });
 }
 
-app.post('/register', (req, res) => {
-  const { email, names, password } = req.body;
+function parseFormData(rawData) {
+  const formData = {};
+  const pairs = rawData.split('&');
 
-  try {
-    getUserId(email);
-
-    alert('Email is already registered.');
-  } catch (errorr) {
-
-    const sql = 'INSERT INTO users (email, names, password) VALUES (?, ?, ?)';
-    dbConfig.query(sql, [email, names, bcrypt.hashSync(password, bcrypt.genSaltSync(salt))], (error, results) => {
-      if (error) {
-          console.error(error);
-          res.status(500).send('Error registering user.');
-      } else {
-          res.status(200).redirect('/login');
-  
-          let mail = {
-            from: 'myGmail@gmail.com', 
-            to: email, 
-            subject: 'Successful registration', 
-            text: 'Successful registration'
-          };
-  
-          transporter.sendMail(mail, (error, info) => {
-            if (error) {
-              alert('Something went wrong');
-            } else {
-              alert('Successful registration. Go to your email.');
-            }
-          })
-      }
-    });
+  for (const pair of pairs) {
+    const [key, value] = pair.split('=');
+    formData[decodeURIComponent(key)] = decodeURIComponent(value);
   }
- 
-});
 
-app.post('/login', (req, res) => {
-  const { email, password } = req.body;
+  return formData;
+}
 
-  try {
-    let userId = getUserId(email);
+const server = http.createServer((req, res) => {
+  const { pathname } = url.parse(req.url);
 
-    const sql = 'SELECT * FROM users WHERE id = ?';
-
-    db.query(sql, [userId], (err, results) => {
+  if (req.method == 'GET' && pathname == '/register') {
+    fs.readFile(__dirname + '/index.html', 'utf8', (err, data) => {
       if (err) {
         console.error(err);
-      }
-  
-      if (results.length == 1) {
-        const user = results[0];
-        const hashedPassword = user.password;
-  
-        if (bcrypt.compareSync(password, hashedPassword)) {
-          //TODO: Add session authentication process
-
-          res.status(200);
-          alert('Hello ' + user.names);
-
-        } else {
-          alert('Invalid email or password.');
-        }
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Error');
       } else {
-        alert('Invalid email or password.');
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data);
       }
     });
+  } else if (req.method == 'GET' && pathname == '/login') {
+    fs.readFile(__dirname + '/login.html', 'utf8', (err, data) => {
+      if (err) {
+        console.error(err);
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Error');
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(data);
+      }
+    });
+  } else if (req.method == 'POST' && pathname == '/register') {
+    let body = '';
 
-  } catch (error) {
-    alert('Invalid email or password.');
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+
+    req.on('end', () => {
+      //const userData = JSON.parse(body);
+
+      const userData = parseFormData(body);
+
+      console.log(userData);
+
+      try {
+        getUserId(userData.email);
+
+        alert('Email is already registered.');
+      } catch (errror) {
+
+        const sql = 'INSERT INTO users (email, names, password) VALUES (?, ?, ?)';
+
+        dbConfig.query(sql, [userData.email, userData.names, bcrypt.hashSync(userData.password, bcrypt.genSaltSync(salt))], (error, result) => {
+
+          if (error) {
+            console.error(error);
+            res.writeHead(500, {'Content-Type' : 'text/plain'});
+            res.end('Registration failed');
+          } else {
+            res.writeHead(302, {'Location' : '/login'});
+            res.end();
+
+            let mail = {
+              from: 'myGmail@gmail.com', 
+              to: email, 
+              subject: 'Successful registration', 
+              text: 'Successful registration'
+            };
+    
+            transporter.sendMail(mail, (error, info) => {
+              if (error) {
+                alert('Something went wrong');
+              } else {
+                alert('Successful registration. Go to your email.');
+              }
+            });
+          }
+        });
+      } 
+
+      
+    });
+
+  } else if (req.method == 'POST' && pathname == '/login') {
+    let body = '';
+
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on('end', () => {
+      const userData = JSON.parse(body);
+
+      try {
+        let id = getUserId(userData.email);
+
+        const sql = 'SELECT * FROM users WHERE id = ?';
+
+        db.query(sql, [userId], (err, results) => {
+          if (err) {
+            console.error(err);
+          }
+        });
+  
+        if (results.length == 1) {
+          const user = results[0];
+          const hashedPassword = user.password;
+  
+          if (bcrypt.compareSync(password, hashedPassword)) {
+
+            res.status(200);
+            alert('Hello ' + user.names);
+
+          } else {
+            alert('Invalid email or password.');
+          }
+        }
+
+      } catch (errror) {
+        alert('Invalid email or password')
+      }
+    });
   }
 });
 
-//TODO: Add logout
+server.listen(port, () => {
+  console.log(port);
+});
+
+
